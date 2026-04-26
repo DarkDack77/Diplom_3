@@ -4,7 +4,8 @@ import io.qameta.allure.*;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.junit.Assert;
+import stellar.api.UserApiHelper;
+import stellar.model.UserData;
 import stellar.poclasses.LoginPage;
 import stellar.poclasses.MainPage;
 import stellar.poclasses.RegisterPage;
@@ -17,6 +18,7 @@ import java.util.Objects;
 public class LoginTests extends BaseTest {
 
     private UserData testUser;
+    private UserApiHelper userApiHelper;
     private final String loginMethod;
 
     public LoginTests(String loginMethod) {
@@ -34,52 +36,56 @@ public class LoginTests extends BaseTest {
     }
 
     @Before
+    @Step("Подготовка: создание тестового пользователя через API")
     public void setUpUser() throws Exception {
-        testUser = stellar.UserApiHelper.createUniqueUser();
+        userApiHelper = new UserApiHelper();
+        testUser = userApiHelper.generateUniqueUser();
+        userApiHelper.registerUser(testUser);
     }
 
     @After
-    public void tearDownUser() throws Exception {
-        if (testUser != null) {
-            stellar.UserApiHelper.deleteUser(testUser.getAccessToken());
+    @Step("Очистка: удаление тестового пользователя через API")
+    public void tearDownUser() {
+        if (testUser != null && testUser.getAccessToken() != null) {
+            userApiHelper.deleteUser(testUser.getAccessToken());
         }
     }
 
     @Test
-    @Story("Successful login via different methods")
-    public void successfulLoginTest() {
+    @Story("Successful login")
+    @Description("Проверка авторизации пользователя разными способами")
+    public void loginTest() {
         MainPage mainPage = new MainPage(driver);
-        LoginPage loginPage = new LoginPage(driver, wait);
-        RegisterPage registerPage = new RegisterPage(driver, wait);
+        LoginPage loginPage = new LoginPage(driver);
+        RegisterPage registerPage = new RegisterPage(driver);
 
         mainPage.openPage();
 
-        switch (loginMethod) {
-            case "Через кнопку «Войти в аккаунт» на главной":
-                mainPage.clickEnterAccountButton();
-                break;
-            case "Через кнопку «Личный кабинет»":
-                mainPage.clickPersonalOfficeButton();
-                break;
-            case "Через кнопку в форме регистрации":
-                mainPage.clickEnterAccountButton();
-                loginPage.clickRegisterButton();
-                registerPage.clickEnterFromRegisterForm();
-                break;
-            case "Через кнопку в форме восстановления пароля":
-                mainPage.clickEnterAccountButton();
-                loginPage.clickResetPasswordButton();
-                loginPage.clickLoginFromResetPasswordPage();
-                break;
+        if (Objects.equals(loginMethod, "Через кнопку «Войти в аккаунт» на главной")) {
+            mainPage.clickEnterAccountButton();
         }
 
-        loginPage.fillEmailField(testUser.getEmail());
-        loginPage.fillPasswordField(testUser.getPassword());
-        loginPage.clickLoginButton();
+        if (Objects.equals(loginMethod, "Через кнопку «Личный кабинет»")) {
+            mainPage.clickPersonalAccountButton();
+        }
+
+        if (Objects.equals(loginMethod, "Через кнопку в форме регистрации")) {
+            mainPage.clickEnterAccountButton();
+            loginPage.clickRegisterLink();
+            registerPage.clickEnterFromRegisterForm();
+        }
+
+        if (Objects.equals(loginMethod, "Через кнопку в форме восстановления пароля")) {
+            mainPage.clickEnterAccountButton();
+            loginPage.clickForgotPassword();
+            loginPage.clickEnterFromRestorePassword();
+        }
+
+        loginPage.login(testUser.getEmail(), testUser.getPassword());
 
         Assert.assertTrue(
-                "Авторизация не удалась для способа: " + loginMethod,
-                Objects.requireNonNull(driver.getCurrentUrl()).contains("/profile")
+                "Пользователь не авторизовался",
+                mainPage.isUserLoggedIn()
         );
     }
 }
